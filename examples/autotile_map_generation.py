@@ -11,12 +11,14 @@ def plot_map(fname, rmmvmap, output_fname):
     h, w = contents["height"], contents["width"]
     target = np.array(contents["data"]).reshape([6, h, w])
 
-    plt.figure()
+    fig = plt.figure(frameon=False)
+    ax = fig.add_subplot(111)
+    ax.set_axis_off()
     print(fname)
     res = []
     for i, row in enumerate(target[0]):
         row_tiles = []
-        print(" ".join(map(str, row.tolist())))
+        #print(" ".join(map(str, row.tolist())))
         for j, tile_id in enumerate(row):
             t = rmmvmap.get_tile(tile_id)
             row_tiles.append(t)
@@ -24,10 +26,12 @@ def plot_map(fname, rmmvmap, output_fname):
         res.append(row_tiles)
     res = np.vstack(res)
 
-    plt.title(fname)
-    plt.imshow(Image.fromarray(res))
+    #plt.title(fname)
+    #plt.imshow(Image.fromarray(res))
+    ax.imshow(Image.fromarray(res))
     print(f"save output figure to {output_fname}")
-    plt.savefig(output_fname)
+    #plt.savefig(output_fname)
+    plt.savefig(output_fname, dpi=300, bbox_inches='tight')
 
 
 if __name__ == "__main__":
