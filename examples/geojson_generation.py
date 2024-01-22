@@ -104,6 +104,7 @@ def fill_binary_map(bmap):
 
     # get the original size
     ans = padded_bmap[p:-p, p:-p]
+    ans = ans.astype(np.bool_)
     return ans
 
 
@@ -127,8 +128,6 @@ def turn_figure_into_all_connected_bmap(fig_fname):
 
     # preprocess to make a fulfilled binary map, there are holes from generated image
     bmap = fill_binary_map(new_np_img)
-    bmap[bmap == 0] = 2048  # water
-    bmap[bmap == 1] = 2816  # land
     return bmap
 
 
@@ -186,18 +185,21 @@ def generate_map_json(
 
     # generate figure
     bmap = turn_figure_into_all_connected_bmap(tmp_fig_fname)
+    rmmvmap = RMMVMap(A1="resources/World_A1.png", A2="resources/World_A2.png")
+    water = rmmvmap.estimate_and_fill(2048, bmap==0)
+    land = rmmvmap.estimate_and_fill(2816, bmap==1)
+    valued_map = water + land
 
     # generate finalized json
     with open(template_map_json) as f:
         template_map = json.loads(f.read())
     new_map = dict(template_map)
-    new_map['height'] = bmap.shape[0]
-    new_map['width'] = bmap.shape[1]
-    new_map['data'] = bmap.ravel().tolist() + [0] * (5 * bmap.shape[0] * bmap.shape[1])
+    new_map['height'] = valued_map.shape[0]
+    new_map['width'] = valued_map.shape[1]
+    new_map['data'] = valued_map.ravel().tolist() + [0] * (5 * valued_map.shape[0] * valued_map.shape[1])
     with open(result_map_json, "w") as f:
         json.dump(new_map, f)
 
-    rmmvmap = RMMVMap(A1="resources/World_A1.png", A2="resources/World_A2.png")
     plot_map(result_map_json, rmmvmap, tmp_fig_fname)
 
 

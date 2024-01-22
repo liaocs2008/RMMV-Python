@@ -6,7 +6,7 @@ from PIL import Image
 from typing import Dict, Tuple
 
 from .utils import logger
-from .utils import DEFAULT_TILE, DEFAULT_INDEX_DICT
+from .utils import DEFAULT_TILE, DEFAULT_INDEX_DICT, NEIGHBOR_TO_CENTER_DICT
 
 
 class TilesetsBase:
@@ -129,6 +129,53 @@ class TilesetsBase:
             return tile
 
 
+    def simplify_neighbors(self, neighbors):
+        if not (neighbors[0][1] and neighbors[1][0]):
+            neighbors[0][0] = False
+        if not (neighbors[1][0] and neighbors[2][1]):
+            neighbors[2][0] = False
+        if not (neighbors[0][1] and neighbors[1][2]):
+            neighbors[0][2] = False
+        if not (neighbors[1][2] and neighbors[2][1]):
+            neighbors[2][2] = False
+        return neighbors
+
+
+    def estimate_and_fill(self, tile_id, binary_mask):
+        """
+        fill map according to give binary mask and redefine based on given tile id
+
+        tile_id: desired tile id to locate corresponding tileset
+        binary_mask: to fill where it is True
+        """
+        tileset = self.get_tileset(tile_id)
+        assert tileset is not None, f"cannot locate tileset given tile id {tile_id}"
+
+        # we pad to handle the borders
+        padded_bm = np.zeros([binary_mask.shape[0]+2, binary_mask.shape[1]+2]).astype(np.bool_)
+        padded_bm[1:-1, 1:-1] = binary_mask
+        h, w = padded_bm.shape
+        res = np.zeros_like(binary_mask).astype(np.int32)
+        for r in range(1, h-1):
+            for c in range(1, w-1):
+                if padded_bm[r, c]:  # ready to check neighbor conditions
+                    neighbors = padded_bm[r-1:r+2,c-1:c+2].copy()
+                    neighbors = self.simplify_neighbors(neighbors)
+                    # flip labels (True to 0) to fit the dict definition
+                    neighbors = (~neighbors).astype(np.int32).tolist()
+                    neighbors = tuple([tuple(row) for row in neighbors])
+                    tile_index = NEIGHBOR_TO_CENTER_DICT[neighbors]
+                    res[r-1,c-1] = tile_index
+        
+        assert np.all(res[~binary_mask] == 0), "overwrite to extra place!"
+
+        # above already map to one of the 48 cases
+        # we add the tileset offset
+        tileset_offset = (tile_id - self.tile_id_range[0]) // 48
+        tileset_offset = tileset_offset * 48 + self.tile_id_range[0]
+        res[binary_mask] += tileset_offset
+        return res
+
 class TilesetsA1(TilesetsBase):
     """
     Tilesets class for A1 autotiles.
@@ -200,11 +247,23 @@ class RMMVMap:
         res = f"RMMVMap using tilesets {tilesets_names}"
         return res
 
-    def get_tile(self, tile_id, return_index=False):
+    def get_tilesets(self, tile_id, return_index=False):
         res = None
         for tilesets in self.tilesets_list:
+            if tilesets.check_valid_tile_id(tile_id):
+                res = tilesets
+        return res
+
+    def get_tile(self, tile_id, return_index=False):
+        res = None
+        tilesets = self.get_tilesets(tile_id)
+        if tilesets is not None:
             res = tilesets.get_tile(tile_id, return_index=return_index)
-            if res is not None:
-                logger.debug(f"[{tilesets.tileset_name}] tile_id={tile_id} found!")
-                break
+        return res
+
+    def estimate_and_fill(self, tile_id, binary_mask):
+        res = None
+        tilesets = self.get_tilesets(tile_id)
+        if tilesets is not None:
+            res = tilesets.estimate_and_fill(tile_id, binary_mask)
         return res
